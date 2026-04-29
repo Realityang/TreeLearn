@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>卡片链对话 | 问答块+智能梗概</title>
+    <title>卡片链对话 | 自由展开+智能梗概</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -73,7 +73,6 @@
             gap: 1px;
             background: rgba(0,0,0,0.05);
         }
-        /* 左右面板 */
         .left-panel, .right-panel {
             width: 25%;
             background: rgba(255,255,255,0.4);
@@ -99,7 +98,6 @@
             flex-direction: column;
             gap: 0.7rem;
         }
-        /* 缩略卡片样式 */
         .relation-card {
             background: rgba(255,255,255,0.7);
             backdrop-filter: blur(2px);
@@ -127,7 +125,6 @@
             .relation-card { background: #1e293b; color: #e2e8f0; }
             .card-summary { color: #94a3b8; }
         }
-        /* 中间主区域 */
         .center-panel {
             width: 50%;
             display: flex;
@@ -143,7 +140,6 @@
             flex-direction: column;
             gap: 0.8rem;
         }
-        /* 单个问答卡片 */
         .qa-card {
             transition: all 0.2s ease;
             border-radius: 1.2rem;
@@ -160,7 +156,6 @@
             cursor: pointer;
             border-left: 3px solid #94a3b8;
         }
-        /* 短边连接线 */
         .qa-card:not(:first-child)::before {
             content: '';
             position: absolute;
@@ -285,7 +280,6 @@
     </div>
 </div>
 
-<!-- API配置模态框 -->
 <div id="configModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center; z-index:2000;">
     <div style="background:white; border-radius:2rem; width:90%; max-width:450px; padding:1.5rem; margin:auto;">
         <h3>API 设置</h3>
@@ -299,7 +293,6 @@
 
 <script>
     // ---------- 数据结构 ----------
-    // 每个Block代表一个独立的对话链，内部问答对为pairs数组，每个pair {question, answer, summary}
     class Block {
         constructor(id, parentId, title = "新对话") {
             this.id = id;
@@ -307,14 +300,14 @@
             this.childIds = [];
             this.title = title;
             this.pairs = [];        // [{question, answer, summary}]
-            this.overview = "";     // 整个块的概览摘要（用于左右缩略块）
+            this.overview = "";     // 整个块概览（左右缩略用）
+            this.expandedState = []; // 每个pair是否展开，默认最新一条展开，其余折叠
         }
     }
     
     let blocksMap = new Map();
     let currentBlockId = null;
     
-    // API配置
     let apiConfig = {
         baseUrl: 'https://api.openai.com/v1',
         apiKey: '',
@@ -325,9 +318,7 @@
     };
     
     let isGenerating = false;
-    let currentAbort = null;
     
-    // DOM 元素
     const parentListDiv = document.getElementById('parentList');
     const childListDiv = document.getElementById('childList');
     const cardsStackDiv = document.getElementById('cardsStack');
@@ -340,7 +331,6 @@
     const resetBtn = document.getElementById('resetBtn');
     const configBtn = document.getElementById('configBtn');
     
-    // 辅助函数
     function updateStatus(text, isError = false) {
         statusSpan.innerHTML = `<i class="fas fa-circle"></i> ${text}`;
         statusSpan.style.color = isError ? '#f87171' : '#94a3b8';
@@ -352,7 +342,6 @@
         try { return marked.parse(content); } catch(e) { return escapeHtml(content).replace(/\n/g,'<br>'); }
     }
     
-    // 调用大模型 (非流式，简洁)
     async function callLLM(messages, maxTokens = 800) {
         const { baseUrl, apiKey, model, temperature } = apiConfig;
         if(!apiKey) { updateStatus('缺少API Key', true); return null; }
@@ -373,14 +362,13 @@
         } catch(e) { updateStatus(`LLM错误: ${e.message}`, true); return null; }
     }
     
-    // 生成梗概（用于单个问答对）
     async function generatePairSummary(question, answer) {
+        if(!answer) return "等待回答生成后自动总结";
         const prompt = `请用30字以内精炼概括以下问答的核心内容：\n问：${question}\n答：${answer.substring(0, 600)}\n只输出概括文本。`;
         const result = await callLLM([{ role: 'user', content: prompt }], 80);
-        return result ? result.substring(0, 70) : '点击展开查看详情';
+        return result ? result.substring(0, 70) : (question.length > 40 ? question.slice(0,40)+"…" : question);
     }
     
-    // 生成整个块的概述（用于左右缩略卡片）
     async function generateBlockOverview(block) {
         if(!block.pairs.length) return "暂无对话";
         let content = block.pairs.map(p => `问：${p.question}\n答：${p.answer || ''}`).join('\n');
@@ -391,7 +379,6 @@
         return block.pairs[0].question.substring(0, 40);
     }
     
-    // 保存到localStorage
     function persist() {
         const data = { blocksMap: Array.from(blocksMap.entries()), currentBlockId, apiConfig };
         localStorage.setItem('card_chain_data', JSON.stringify(data));
@@ -406,65 +393,90 @@
                 currentBlockId = d.currentBlockId;
                 if(d.apiConfig) apiConfig = d.apiConfig;
                 if(!blocksMap.has(currentBlockId)) currentBlockId = null;
+                // 确保每个block的expandedState存在且长度正确
+                for(let block of blocksMap.values()) {
+                    if(!block.expandedState || block.expandedState.length !== block.pairs.length) {
+                        block.expandedState = block.pairs.map((_, idx) => idx === block.pairs.length-1);
+                    }
+                }
             } catch(e) {}
         }
         if(!blocksMap.size || !currentBlockId) {
             const defaultBlock = new Block('root_'+Date.now(), null, "欢迎对话");
             defaultBlock.pairs.push({
                 question: "你好，介绍一下你自己",
-                answer: "✨ 你好！我是智能助手，支持多级追问。每个问答独立成块，旧块会自动折叠并生成智能梗概。你可以选中我的回答文本创建追问子块，左右缩略块会显示该层所有对话的概述。",
+                answer: "✨ 你好！我是智能助手，支持多级追问。每个问答独立成块，可以自由展开任意历史卡片。选中我的回答文本可以创建追问子块。",
                 summary: "初始介绍"
             });
+            defaultBlock.expandedState = [true];
             blocksMap.set(defaultBlock.id, defaultBlock);
             currentBlockId = defaultBlock.id;
-            // 异步生成概述
             generateBlockOverview(defaultBlock).then(over => { defaultBlock.overview = over; persist(); renderAll(); });
         }
         renderAll();
     }
     
-    // 渲染中间卡片栈（当前块的所有pair，最后一个展开，前面的折叠）
     async function renderCardsStack() {
         const block = blocksMap.get(currentBlockId);
-        if(!block) return;
-        if(block.pairs.length === 0) {
+        if(!block || block.pairs.length === 0) {
             cardsStackDiv.innerHTML = '<div style="text-align:center; padding:2rem;">暂无问答，发送第一条消息吧</div>';
             return;
         }
+        // 确保expandedState与pairs对齐
+        while(block.expandedState.length < block.pairs.length) block.expandedState.push(false);
+        while(block.expandedState.length > block.pairs.length) block.expandedState.pop();
+        
         let html = '';
         for(let i=0; i<block.pairs.length; i++) {
             const pair = block.pairs[i];
-            const isExpanded = (i === block.pairs.length-1); // 最后一个展开
-            const summaryText = pair.summary || (pair.answer ? await generatePairSummary(pair.question, pair.answer) : "等待总结");
-            if(!pair.summary && pair.answer) {
-                pair.summary = summaryText;
-                persist();
-            }
+            const isExpanded = block.expandedState[i];
+            const summaryText = pair.summary || (pair.answer ? "正在生成摘要..." : "等待回答");
             if(isExpanded) {
                 html += `
-                    <div class="qa-card expanded">
+                    <div class="qa-card expanded" data-index="${i}">
                         <div class="card-inner">
                             <div class="full-question"><div class="avatar-icon user"><i class="fas fa-user"></i></div><div class="bubble"><strong>提问</strong><br>${escapeHtml(pair.question)}</div></div>
-                            <div class="full-answer"><div class="avatar-icon"><i class="fas fa-robot"></i></div><div class="bubble" id="answerBubble"><strong>回答</strong><br>${pair.answer ? renderMarkdown(pair.answer) : '<em>生成中...</em>'}</div></div>
+                            <div class="full-answer"><div class="avatar-icon"><i class="fas fa-robot"></i></div><div class="bubble"><strong>回答</strong><br>${pair.answer ? renderMarkdown(pair.answer) : '<em>生成中...</em>'}</div></div>
+                            <div style="display:flex; justify-content:flex-end; margin-top:8px;"><button class="small secondary collapse-btn" data-index="${i}"><i class="fas fa-compress"></i> 折叠</button></div>
                         </div>
                     </div>
                 `;
             } else {
                 html += `
-                    <div class="qa-card collapsed" data-pair-index="${i}">
+                    <div class="qa-card collapsed" data-index="${i}">
                         <div class="card-inner">
-                            <div class="collapsed-content"><i class="fas fa-history"></i><div class="collapsed-summary">📌 ${escapeHtml(pair.summary)}</div><span style="font-size:0.7rem;">(点击展开)</span></div>
+                            <div class="collapsed-content">
+                                <i class="fas fa-history"></i>
+                                <div class="collapsed-summary">📌 ${escapeHtml(summaryText)}</div>
+                                <button class="small expand-btn" data-index="${i}" style="background:#475569;">展开</button>
+                            </div>
                         </div>
                     </div>
                 `;
             }
         }
         cardsStackDiv.innerHTML = html;
-        // 绑定折叠卡片的点击展开事件
-        document.querySelectorAll('.qa-card.collapsed').forEach(card => {
-            card.addEventListener('click', (e) => {
-                const idx = card.getAttribute('data-pair-index');
-                if(idx !== null) expandPairAtIndex(parseInt(idx));
+        // 绑定展开/折叠事件
+        document.querySelectorAll('.expand-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute('data-index'));
+                if(!isNaN(idx)) {
+                    block.expandedState[idx] = true;
+                    persist();
+                    renderCardsStack();
+                }
+            });
+        });
+        document.querySelectorAll('.collapse-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute('data-index'));
+                if(!isNaN(idx)) {
+                    block.expandedState[idx] = false;
+                    persist();
+                    renderCardsStack();
+                }
             });
         });
         // 代码高亮
@@ -472,20 +484,6 @@
         cardsStackDiv.scrollTop = cardsStackDiv.scrollHeight;
     }
     
-    function expandPairAtIndex(index) {
-        const block = blocksMap.get(currentBlockId);
-        if(!block) return;
-        // 重新排列pairs，将被点击的移动到最后一个（相当于聚焦）
-        if(index < block.pairs.length-1) {
-            const pair = block.pairs.splice(index, 1)[0];
-            block.pairs.push(pair);
-            persist();
-            renderCardsStack();
-            updateStatus("已展开历史卡片");
-        }
-    }
-    
-    // 用户发送新消息
     async function sendNewMessage() {
         if(isGenerating) { updateStatus('请等待回复完成', true); return; }
         const question = chatInput.value.trim();
@@ -493,24 +491,25 @@
         const block = blocksMap.get(currentBlockId);
         if(!block) return;
         chatInput.value = '';
-        // 1. 将当前最后一个pair（如果有）先折叠并生成梗概（如果还没有生成）
-        if(block.pairs.length > 0) {
-            const lastPair = block.pairs[block.pairs.length-1];
-            if(lastPair.answer && !lastPair.summary) {
-                lastPair.summary = await generatePairSummary(lastPair.question, lastPair.answer);
-                persist();
+        // 确保当前所有有回答但无摘要的pair生成摘要（异步不等待）
+        for(let i=0; i<block.pairs.length; i++) {
+            const p = block.pairs[i];
+            if(p.answer && !p.summary) {
+                generatePairSummary(p.question, p.answer).then(sum => { p.summary = sum; persist(); renderCardsStack(); });
             }
         }
-        // 2. 添加新的一对（占位回答）
+        // 添加新pair
         const newPair = { question, answer: '', summary: '' };
         block.pairs.push(newPair);
+        block.expandedState.push(true); // 新卡片展开
+        // 自动折叠其他卡片？可选，但为了体验，保持其他卡片原有展开状态，但为了节省空间，我们折叠除了最新的之外的所有
+        for(let i=0; i<block.expandedState.length-1; i++) block.expandedState[i] = false;
         persist();
         renderCardsStack();
-        // 3. 调用API生成回答
+        
         isGenerating = true;
         sendBtn.disabled = true;
         updateStatus('AI思考中...');
-        // 构建历史消息（所有问答对）
         const historyMessages = [];
         if(apiConfig.systemPrompt) historyMessages.push({ role: 'system', content: apiConfig.systemPrompt });
         for(let p of block.pairs.slice(0, -1)) {
@@ -521,21 +520,21 @@
         const answer = await callLLM(historyMessages, apiConfig.maxTokens);
         if(answer !== null) {
             newPair.answer = answer;
-            // 异步生成梗概
-            generatePairSummary(question, answer).then(sum => { newPair.summary = sum; persist(); renderCardsStack(); });
+            // 生成摘要
+            const summary = await generatePairSummary(question, answer);
+            newPair.summary = summary;
             updateStatus('回答完成');
         } else {
             newPair.answer = '❌ 生成失败，请检查API配置。';
+            newPair.summary = "生成失败";
         }
         isGenerating = false;
         sendBtn.disabled = false;
         persist();
         renderCardsStack();
-        // 更新块的整体概述
         generateBlockOverview(block).then(over => { block.overview = over; persist(); renderParentChild(); });
     }
     
-    // 重新生成最后回答
     async function regenerateLast() {
         const block = blocksMap.get(currentBlockId);
         if(!block || block.pairs.length === 0) return;
@@ -561,15 +560,13 @@
         }
     }
     
-    // 编辑第一个问题
     async function editFirstQuestion() {
         const block = blocksMap.get(currentBlockId);
         if(!block || block.pairs.length === 0) return;
         const newQ = prompt('编辑第一个问题:', block.pairs[0].question);
         if(newQ && newQ.trim()) {
             block.pairs[0].question = newQ.trim();
-            block.pairs[0].summary = ''; // 清除旧梗概
-            // 重新生成回答
+            block.pairs[0].summary = '';
             const history = [];
             if(apiConfig.systemPrompt) history.push({ role: 'system', content: apiConfig.systemPrompt });
             history.push({ role: 'user', content: newQ.trim() });
@@ -586,7 +583,6 @@
         }
     }
     
-    // 渲染左右缩略块（显示每个块的概述）
     async function renderParentChild() {
         const block = blocksMap.get(currentBlockId);
         if(!block) return;
@@ -595,13 +591,12 @@
             const parent = blocksMap.get(block.parentId);
             if(!parent.overview) parent.overview = await generateBlockOverview(parent);
             parentListDiv.innerHTML = `<div class="relation-card" data-id="${parent.id}"><div class="card-title">⬆ ${escapeHtml(parent.title)}</div><div class="card-summary">📋 ${escapeHtml(parent.overview)}</div></div>`;
-            document.querySelector('#parentList .relation-card')?.addEventListener('click', () => {
-                if(currentBlockId !== parent.id) { currentBlockId = parent.id; renderAll(); }
-            });
+            const card = document.querySelector('#parentList .relation-card');
+            if(card) card.addEventListener('click', () => { if(currentBlockId !== parent.id) { currentBlockId = parent.id; renderAll(); } });
         } else {
             parentListDiv.innerHTML = '<div style="text-align:center; padding:1rem;">无上层来源</div>';
         }
-        // 子块列表
+        // 子块
         if(block.childIds.length === 0) {
             childListDiv.innerHTML = '<div style="text-align:center; padding:1rem;">暂无追问子块<br>选中回答文字创建</div>';
             return;
@@ -617,27 +612,23 @@
         childListDiv.innerHTML = childrenHtml;
         document.querySelectorAll('#childList .relation-card').forEach(card => {
             const id = card.getAttribute('data-id');
-            card.addEventListener('click', () => {
-                if(currentBlockId !== id) { currentBlockId = id; renderAll(); }
-            });
+            card.addEventListener('click', () => { if(currentBlockId !== id) { currentBlockId = id; renderAll(); } });
         });
     }
     
-    // 创建子块（追问）
     async function createChildBlock(selectedText) {
         const parentBlock = blocksMap.get(currentBlockId);
         if(!parentBlock) return;
         const newId = 'block_' + Date.now() + '_' + Math.random().toString(36);
         const newBlock = new Block(newId, currentBlockId, selectedText.slice(0, 40));
         newBlock.pairs.push({ question: selectedText, answer: '', summary: '' });
+        newBlock.expandedState = [true];
         blocksMap.set(newId, newBlock);
         parentBlock.childIds.push(newId);
         persist();
-        // 切换到新块
         currentBlockId = newId;
         renderAll();
         updateStatus(`新建追问块: ${selectedText.slice(0, 40)}`);
-        // 自动生成回答
         const answer = await callLLM([{ role: 'system', content: apiConfig.systemPrompt }, { role: 'user', content: selectedText }], apiConfig.maxTokens);
         if(answer) {
             newBlock.pairs[0].answer = answer;
@@ -649,7 +640,6 @@
         }
     }
     
-    // 文本选择监听
     function setupTextSelection() {
         cardsStackDiv.addEventListener('mouseup', async (e) => {
             const selection = window.getSelection();
@@ -687,6 +677,7 @@
             blocksMap.clear();
             const defaultBlock = new Block('root_'+Date.now(), null, "新对话");
             defaultBlock.pairs.push({ question: "你好，介绍一下你自己", answer: "✨ 我是卡片链助手，支持逐块对话和智能梗概。", summary: "初始问候" });
+            defaultBlock.expandedState = [true];
             blocksMap.set(defaultBlock.id, defaultBlock);
             currentBlockId = defaultBlock.id;
             generateBlockOverview(defaultBlock).then(over => { defaultBlock.overview = over; persist(); renderAll(); });
@@ -695,7 +686,6 @@
         }
     }
     
-    // 配置弹窗
     function openConfig() {
         document.getElementById('modalApiBase').value = apiConfig.baseUrl;
         document.getElementById('modalApiKey').value = apiConfig.apiKey;
