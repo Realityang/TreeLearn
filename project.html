@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>智链对话 | 父子追问工作台</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(145deg, #eef2f6 0%, #d9e2ec 100%);
+            height: 100vh;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: linear-gradient(145deg, #0a0f1a 0%, #111827 100%);
+            }
+        }
+
+        .app-wrapper {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255,255,255,0.4);
+            backdrop-filter: blur(6px);
+            border-radius: 2rem;
+            overflow: hidden;
+            box-shadow: 0 20px 35px -10px rgba(0,0,0,0.2);
+        }
+
+        .top-bar {
+            padding: 0.8rem 1.5rem;
+            background: rgba(255,255,255,0.3);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .logo-area h2 {
+            font-size: 1.2rem;
+            background: linear-gradient(135deg, #3b82f6, #a855f7);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .config-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        button {
+            background: #3b82f6;
+            border: none;
+            border-radius: 2rem;
+            padding: 0.4rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        button.secondary { background: #475569; }
+        button.danger { background: #ef4444; }
+        button.small { padding: 0.3rem 0.8rem; font-size: 0.75rem; }
+        button:hover { transform: translateY(-1px); filter: brightness(1.05);}
+
+        .three-columns {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+            gap: 1px;
+            background: rgba(0,0,0,0.05);
+        }
+
+        /* 左侧父块面板 */
+        .left-panel {
+            width: 25%;
+            background: rgba(255,255,255,0.4);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-right: 1px solid rgba(0,0,0,0.1);
+        }
+        /* 右侧子块面板 */
+        .right-panel {
+            width: 25%;
+            background: rgba(255,255,255,0.4);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-left: 1px solid rgba(0,0,0,0.1);
+        }
+        .panel-header {
+            padding: 0.8rem;
+            font-weight: 600;
+            background: rgba(0,0,0,0.05);
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .scroll-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+        }
+        /* 缩略卡片 */
+        .relation-card {
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(2px);
+            border-radius: 1rem;
+            padding: 0.6rem 0.8rem;
+            cursor: pointer;
+            transition: 0.15s;
+            border-left: 4px solid #3b82f6;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .relation-card:hover { background: white; transform: translateX(3px); }
+        .card-question {
+            font-weight: 600;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .card-summary {
+            font-size: 0.7rem;
+            color: #475569;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        @media (prefers-color-scheme: dark) {
+            .left-panel, .right-panel { background: rgba(20,28,40,0.6); }
+            .relation-card { background: #1e293b; color: #e2e8f0; }
+            .card-summary { color: #94a3b8; }
+        }
+
+        /* 中间主卡片区域 */
+        .center-panel {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255,255,255,0.3);
+            overflow: hidden;
+        }
+        .conversation-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        /* 对话消息气泡 */
+        .message-item {
+            display: flex;
+            gap: 10px;
+            animation: fadeIn 0.2s ease;
+        }
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #3b82f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8rem;
+            flex-shrink: 0;
+        }
+        .message-avatar.user { background: #10b981; }
+        .message-bubble {
+            max-width: 80%;
+            background: white;
+            border-radius: 1.2rem;
+            padding: 0.6rem 1rem;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+        .user .message-bubble {
+            background: #3b82f6;
+            color: white;
+        }
+        @media (prefers-color-scheme: dark) {
+            .message-bubble { background: #1f2937; color: #e2e8f0; }
+            .user .message-bubble { background: #2563eb; }
+        }
+        .input-area-card {
+            padding: 1rem;
+            background: rgba(255,255,255,0.6);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            gap: 0.8rem;
+            align-items: flex-end;
+        }
+        .input-area-card textarea {
+            flex: 1;
+            border-radius: 1.5rem;
+            padding: 0.7rem 1rem;
+            resize: none;
+            border: 1px solid #cbd5e1;
+            font-family: inherit;
+        }
+        .edit-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 0.5rem;
+        }
+        .selection-toolbar {
+            position: fixed;
+            background: #1e293b;
+            color: white;
+            border-radius: 2rem;
+            padding: 0.3rem 1rem;
+            display: flex;
+            gap: 8px;
+            z-index: 1000;
+            font-size: 0.8rem;
+            pointer-events: auto;
+            box-shadow: 0 4px 12px black;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+    </style>
+</head>
+<body>
+<div class="app-wrapper">
+    <div class="top-bar">
+        <div class="logo-area"><h2><i class="fas fa-project-diagram"></i> 父子追问工作台</h2></div>
+        <div class="config-buttons">
+            <button id="configBtn" class="small"><i class="fas fa-sliders-h"></i> API配置</button>
+            <button id="resetBtn" class="small secondary"><i class="fas fa-trash"></i> 重置</button>
+            <span id="statusBadge" style="font-size:0.7rem; background:#33415570; padding:4px 10px; border-radius:20px;"><i class="fas fa-circle"></i> 就绪</span>
+        </div>
+    </div>
+    <div class="three-columns">
+        <!-- 左侧：父块（来源块） -->
+        <div class="left-panel">
+            <div class="panel-header"><i class="fas fa-arrow-up"></i> 来源块（上一层）</div>
+            <div class="scroll-list" id="parentPanelList"></div>
+        </div>
+        <!-- 中间：当前主卡片 + 连续对话 -->
+        <div class="center-panel">
+            <div class="conversation-container" id="conversationContainer"></div>
+            <div class="input-area-card">
+                <textarea id="chatInput" rows="1" placeholder="继续向当前AI提问... (Enter发送)"></textarea>
+                <button id="sendChatBtn" class="icon-btn"><i class="fas fa-paper-plane"></i> 发送</button>
+            </div>
+            <div class="edit-toolbar" style="padding: 0 1rem 0.8rem 1rem;">
+                <button id="editMainQuestionBtn" class="small secondary"><i class="fas fa-edit"></i> 编辑首问</button>
+                <button id="regenerateLastBtn" class="small"><i class="fas fa-magic"></i> 重新生成最后回答</button>
+            </div>
+        </div>
+        <!-- 右侧：子块列表（追问链） -->
+        <div class="right-panel">
+            <div class="panel-header"><i class="fas fa-code-branch"></i> 追问链（下一层）<span id="childCountBadge"></span></div>
+            <div class="scroll-list" id="childPanelList"></div>
+            <div style="padding: 0.5rem; font-size:0.7rem; text-align:center; color:#64748b;">✏️ 选中回答文字 → 新建追问子块</div>
+        </div>
+    </div>
+</div>
+
+<!-- API配置模态框 -->
+<div id="configModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center; z-index:2000;">
+    <div style="background:white; border-radius:2rem; width:90%; max-width:450px; padding:1.5rem; margin:auto;">
+        <h3>API 设置</h3>
+        <div style="margin:1rem 0;"><label>Base URL</label><input type="text" id="modalApiBase" style="width:100%;"></div>
+        <div style="margin:1rem 0;"><label>API Key</label><input type="password" id="modalApiKey" style="width:100%;"></div>
+        <div style="margin:1rem 0;"><label>模型名称</label><input type="text" id="modalModel" style="width:100%;"></div>
+        <div style="margin:1rem 0;"><label>系统提示词</label><textarea id="modalSystemPrompt" rows="2" style="width:100%;"></textarea></div>
+        <div style="display:flex; gap:10px; justify-content:flex-end;"><button id="closeModal">取消</button><button id="saveModal" style="background:#3b82f6;">保存</button></div>
+    </div>
+</div>
+
+<script>
+    // ---------- 数据结构 ----------
+    // 每个块代表一个对话主题，内部包含一个消息数组（连续对话）
+    let blocksMap = new Map();  // id -> Block
+    let currentBlockId = null;
+    
+    // Block 结构: { id, parentId, childIds, title (首问摘要), messages: [{role, content}] }
+    // 初始化默认块
+    function createDefaultBlock() {
+        const id = 'root_' + Date.now();
+        return {
+            id: id,
+            parentId: null,
+            childIds: [],
+            title: '欢迎使用',
+            messages: [
+                { role: 'assistant', content: '✨ 你好！这是你的智能工作台。\n\n- 在下方输入框可以继续当前对话，实现连续问答。\n- 选中我的任何一段回答文字，点击“新建追问”会创建一个子块（右侧追问链）。\n- 点击左侧父块可返回上一层，点击右侧子块可深入下一层。\n- 每个块独立维护对话历史，支持多轮线性追加。' }
+            ]
+        };
+    }
+
+    // 全局配置
+    let apiConfig = {
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: '',
+        model: 'gpt-3.5-turbo',
+        systemPrompt: '你是一个乐于助人、知识渊博的AI助手。',
+        temperature: 0.7,
+        maxTokens: 2000
+    };
+
+    // UI 状态
+    let isGenerating = false;
+    let currentAbortController = null;
+
+    // DOM 元素
+    const parentContainer = document.getElementById('parentPanelList');
+    const childContainer = document.getElementById('childPanelList');
+    const conversationContainer = document.getElementById('conversationContainer');
+    const chatInput = document.getElementById('chatInput');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+    const editMainQuestionBtn = document.getElementById('editMainQuestionBtn');
+    const regenerateLastBtn = document.getElementById('regenerateLastBtn');
+    const statusSpan = document.getElementById('statusBadge');
+    const configModal = document.getElementById('configModal');
+    const resetBtn = document.getElementById('resetBtn');
+    const configBtn = document.getElementById('configBtn');
+
+    // 辅助函数
+    function updateStatus(text, isError = false) {
+        statusSpan.innerHTML = `<i class="fas fa-circle"></i> ${text}`;
+        statusSpan.style.color = isError ? '#f87171' : '#94a3b8';
+        setTimeout(() => { if(!isError) statusSpan.style.color = ''; }, 2500);
+    }
+
+    function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'); }
+    function renderMarkdown(content) {
+        if(!content) return '';
+        try { return marked.parse(content); } catch(e) { return escapeHtml(content).replace(/\n/g,'<br>'); }
+    }
+
+    // 获取当前块的对话历史（用于API）
+    function getMessagesForBlock(block) {
+        const msgs = [];
+        if(apiConfig.systemPrompt) msgs.push({ role: 'system', content: apiConfig.systemPrompt });
+        msgs.push(...block.messages);
+        return msgs;
+    }
+
+    // 调用LLM生成回答（非流式，简化稳定）
+    async function callLLM(messages, userMessage) {
+        const { baseUrl, apiKey, model, temperature, maxTokens } = apiConfig;
+        if(!apiKey) { updateStatus('请先配置API Key', true); return null; }
+        const url = baseUrl.endsWith('/chat/completions') ? baseUrl : baseUrl + '/chat/completions';
+        const payload = {
+            model: model,
+            messages: messages,
+            temperature: temperature,
+            max_tokens: maxTokens,
+            stream: false
+        };
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+            clearTimeout(timeout);
+            if(!resp.ok) {
+                let err = await resp.text();
+                throw new Error(`API ${resp.status}: ${err.slice(0,100)}`);
+            }
+            const data = await resp.json();
+            return data.choices?.[0]?.message?.content || '';
+        } catch(e) {
+            updateStatus(`LLM错误: ${e.message}`, true);
+            return null;
+        }
+    }
+
+    // 向当前块追加新的问答
+    async function continueConversation(userQuestion) {
+        if(isGenerating) { updateStatus('正在生成中，请稍后', true); return false; }
+        if(!userQuestion.trim()) return false;
+        const block = blocksMap.get(currentBlockId);
+        if(!block) return false;
+        // 添加用户消息
+        block.messages.push({ role: 'user', content: userQuestion });
+        renderCurrentConversation();
+        // 滚动到底部
+        const container = conversationContainer;
+        container.scrollTop = container.scrollHeight;
+        
+        isGenerating = true;
+        sendChatBtn.disabled = true;
+        updateStatus('AI思考中...');
+        const messagesForAPI = getMessagesForBlock(block);
+        const answer = await callLLM(messagesForAPI, userQuestion);
+        sendChatBtn.disabled = false;
+        isGenerating = false;
+        if(answer !== null) {
+            block.messages.push({ role: 'assistant', content: answer });
+            // 更新标题为首问摘要
+            if(block.messages[0] && block.messages[0].role === 'user') {
+                block.title = block.messages[0].content.substring(0, 40);
+            } else {
+                block.title = '对话';
+            }
+            renderCurrentConversation();
+            saveToLocal();
+            updateStatus('回答完成');
+        } else {
+            block.messages.pop(); // 移除未成功的用户消息
+            renderCurrentConversation();
+            updateStatus('生成失败', true);
+        }
+        container.scrollTop = container.scrollHeight;
+        return true;
+    }
+
+    // 重新生成最后一条助手回答
+    async function regenerateLastAnswer() {
+        const block = blocksMap.get(currentBlockId);
+        if(!block || block.messages.length === 0) return;
+        const lastMsg = block.messages[block.messages.length-1];
+        if(lastMsg.role !== 'assistant') {
+            updateStatus('最后一条不是助手消息，无法重新生成', true);
+            return;
+        }
+        // 移除最后一条助手消息
+        block.messages.pop();
+        // 找到最后一条用户消息
+        const lastUserMsg = [...block.messages].reverse().find(m => m.role === 'user');
+        if(!lastUserMsg) return;
+        // 重新调用
+        const messagesForAPI = getMessagesForBlock(block);
+        isGenerating = true;
+        regenerateLastBtn.disabled = true;
+        updateStatus('重新生成中...');
+        const answer = await callLLM(messagesForAPI, lastUserMsg.content);
+        regenerateLastBtn.disabled = false;
+        isGenerating = false;
+        if(answer !== null) {
+            block.messages.push({ role: 'assistant', content: answer });
+            renderCurrentConversation();
+            saveToLocal();
+            updateStatus('已重新生成');
+        } else {
+            // 恢复原回答（没有备份，显示错误）
+            block.messages.push({ role: 'assistant', content: '重新生成失败，请检查API配置' });
+            renderCurrentConversation();
+        }
+    }
+
+    // 编辑首问（第一条用户消息）
+    function editFirstQuestion() {
+        const block = blocksMap.get(currentBlockId);
+        if(!block) return;
+        const firstUserIndex = block.messages.findIndex(m => m.role === 'user');
+        if(firstUserIndex === -1) return;
+        const newText = prompt('编辑第一条用户问题:', block.messages[firstUserIndex].content);
+        if(newText && newText.trim()) {
+            block.messages[firstUserIndex].content = newText.trim();
+            block.title = newText.trim().substring(0, 40);
+            saveToLocal();
+            renderCurrentConversation();
+            updateStatus('首问已更新');
+        }
+    }
+
+    // 渲染当前块的对话内容
+    function renderCurrentConversation() {
+        const block = blocksMap.get(currentBlockId);
+        if(!block) return;
+        conversationContainer.innerHTML = block.messages.map(msg => `
+            <div class="message-item ${msg.role}">
+                <div class="message-avatar ${msg.role}"><i class="fas ${msg.role === 'user' ? 'fa-user' : 'fa-robot'}"></i></div>
+                <div class="message-bubble">${renderMarkdown(msg.content)}</div>
+            </div>
+        `).join('');
+        // 高亮代码
+        conversationContainer.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        conversationContainer.scrollTop = conversationContainer.scrollHeight;
+    }
+
+    // 渲染左侧父块面板
+    function renderParentPanel() {
+        const block = blocksMap.get(currentBlockId);
+        if(!block || !block.parentId) {
+            parentContainer.innerHTML = '<div style="text-align:center; padding:1rem; opacity:0.6;">无上层来源</div>';
+            return;
+        }
+        const parentBlock = blocksMap.get(block.parentId);
+        if(!parentBlock) {
+            parentContainer.innerHTML = '<div style="text-align:center; padding:1rem;">父块丢失</div>';
+            return;
+        }
+        parentContainer.innerHTML = `
+            <div class="relation-card" data-id="${parentBlock.id}">
+                <div class="card-question"><i class="fas fa-arrow-left"></i> ${escapeHtml(parentBlock.title)}</div>
+                <div class="card-summary">📌 点击返回上一层</div>
+            </div>
+        `;
+        const card = parentContainer.querySelector('.relation-card');
+        card.addEventListener('click', () => {
+            if(currentBlockId !== parentBlock.id) {
+                currentBlockId = parentBlock.id;
+                renderAll();
+                updateStatus(`切换到: ${parentBlock.title}`);
+            }
+        });
+    }
+
+    // 渲染右侧子块列表（追问链）
+    function renderChildPanel() {
+        const block = blocksMap.get(currentBlockId);
+        if(!block || block.childIds.length === 0) {
+            childContainer.innerHTML = '<div style="text-align:center; padding:1rem; opacity:0.6;">暂无追问子块<br>选中回答文字创建</div>';
+            document.getElementById('childCountBadge').innerText = '';
+            return;
+        }
+        document.getElementById('childCountBadge').innerText = ` (${block.childIds.length})`;
+        childContainer.innerHTML = block.childIds.map(childId => {
+            const child = blocksMap.get(childId);
+            if(!child) return '';
+            return `
+                <div class="relation-card" data-id="${child.id}">
+                    <div class="card-question"><i class="fas fa-code-branch"></i> ${escapeHtml(child.title)}</div>
+                    <div class="card-summary">💬 共 ${child.messages.length} 条消息</div>
+                </div>
+            `;
+        }).join('');
+        // 绑定点击事件
+        document.querySelectorAll('#childPanelList .relation-card').forEach(card => {
+            const id = card.getAttribute('data-id');
+            card.addEventListener('click', (e) => {
+                if(currentBlockId !== id) {
+                    currentBlockId = id;
+                    renderAll();
+                    updateStatus(`深入追问: ${blocksMap.get(id)?.title}`);
+                }
+            });
+        });
+    }
+
+    // 创建子块（追问）
+    async function createChildBlock(selectedText, contextBlockId) {
+        const parentBlock = blocksMap.get(contextBlockId);
+        if(!parentBlock) return;
+        const newId = 'block_' + Date.now() + '_' + Math.random().toString(36);
+        const newTitle = selectedText.length > 40 ? selectedText.slice(0,40)+'…' : selectedText;
+        const newBlock = {
+            id: newId,
+            parentId: contextBlockId,
+            childIds: [],
+            title: newTitle || '追问',
+            messages: [
+                { role: 'user', content: selectedText || '请基于上文继续' },
+                { role: 'assistant', content: '（等待AI回答或手动编辑）' }
+            ]
+        };
+        blocksMap.set(newId, newBlock);
+        parentBlock.childIds.push(newId);
+        saveToLocal();
+        // 自动切换到新子块
+        currentBlockId = newId;
+        renderAll();
+        updateStatus(`已创建追问子块: ${newTitle}`);
+        // 可选：自动生成回答
+        const answer = await callLLM(getMessagesForBlock(newBlock), newBlock.messages[0].content);
+        if(answer) {
+            newBlock.messages[1].content = answer;
+            renderCurrentConversation();
+            saveToLocal();
+            updateStatus('子块AI回答已生成');
+        }
+    }
+
+    // 处理文本选中创建追问（右侧区域）
+    function setupTextSelectionHandler() {
+        // 监听当前对话区域的选择
+        conversationContainer.addEventListener('mouseup', (e) => {
+            const selection = window.getSelection();
+            const text = selection.toString().trim();
+            if(text.length === 0) return;
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if(rect.width === 0 && rect.height === 0) return;
+            // 移除已有toolbar
+            let old = document.querySelector('.selection-toolbar');
+            if(old) old.remove();
+            const toolbar = document.createElement('div');
+            toolbar.className = 'selection-toolbar';
+            toolbar.innerHTML = `<i class="fas fa-code-branch"></i> 将此段作为追问 → 新建子块 <button id="confirmAskBtn" style="background:#f97316; padding:0.2rem 0.6rem;">创建</button>`;
+            document.body.appendChild(toolbar);
+            toolbar.style.left = `${rect.left + window.scrollX}px`;
+            toolbar.style.top = `${rect.top + window.scrollY - 30}px`;
+            const cleanup = () => toolbar.remove();
+            document.getElementById('confirmAskBtn')?.addEventListener('click', async () => {
+                cleanup();
+                await createChildBlock(text, currentBlockId);
+            });
+            setTimeout(() => { window.addEventListener('click', function once(){ cleanup(); window.removeEventListener('click', once); }); }, 100);
+        });
+    }
+
+    // 全量渲染
+    function renderAll() {
+        renderParentPanel();
+        renderChildPanel();
+        renderCurrentConversation();
+        saveToLocal();
+    }
+
+    // 持久化
+    function saveToLocal() {
+        const data = {
+            blocksMap: Array.from(blocksMap.entries()),
+            currentBlockId,
+            apiConfig
+        };
+        localStorage.setItem('chaintalk_data', JSON.stringify(data));
+    }
+
+    function loadFromLocal() {
+        const raw = localStorage.getItem('chaintalk_data');
+        if(raw) {
+            try {
+                const data = JSON.parse(raw);
+                blocksMap = new Map(data.blocksMap);
+                currentBlockId = data.currentBlockId;
+                if(data.apiConfig) apiConfig = data.apiConfig;
+                if(!blocksMap.has(currentBlockId)) currentBlockId = null;
+            } catch(e) {}
+        }
+        if(!blocksMap.size || !currentBlockId) {
+            const defaultBlock = createDefaultBlock();
+            blocksMap.set(defaultBlock.id, defaultBlock);
+            currentBlockId = defaultBlock.id;
+        }
+        renderAll();
+    }
+
+    function resetAll() {
+        if(confirm('重置将清除所有对话树和配置，是否继续？')) {
+            blocksMap.clear();
+            const defaultBlock = createDefaultBlock();
+            blocksMap.set(defaultBlock.id, defaultBlock);
+            currentBlockId = defaultBlock.id;
+            saveToLocal();
+            renderAll();
+            updateStatus('已重置');
+        }
+    }
+
+    // API 配置模态框
+    function openConfig() {
+        document.getElementById('modalApiBase').value = apiConfig.baseUrl;
+        document.getElementById('modalApiKey').value = apiConfig.apiKey;
+        document.getElementById('modalModel').value = apiConfig.model;
+        document.getElementById('modalSystemPrompt').value = apiConfig.systemPrompt;
+        configModal.style.display = 'flex';
+    }
+    document.getElementById('saveModal')?.addEventListener('click', () => {
+        apiConfig.baseUrl = document.getElementById('modalApiBase').value.trim();
+        apiConfig.apiKey = document.getElementById('modalApiKey').value.trim();
+        apiConfig.model = document.getElementById('modalModel').value.trim();
+        apiConfig.systemPrompt = document.getElementById('modalSystemPrompt').value;
+        saveToLocal();
+        configModal.style.display = 'none';
+        updateStatus('API配置已保存');
+    });
+    document.getElementById('closeModal')?.addEventListener('click', () => configModal.style.display = 'none');
+
+    // 事件绑定
+    sendChatBtn.addEventListener('click', () => {
+        const msg = chatInput.value.trim();
+        if(msg) {
+            chatInput.value = '';
+            continueConversation(msg);
+        }
+    });
+    chatInput.addEventListener('keydown', (e) => {
+        if(e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatBtn.click();
+        }
+    });
+    editMainQuestionBtn.addEventListener('click', editFirstQuestion);
+    regenerateLastBtn.addEventListener('click', regenerateLastAnswer);
+    resetBtn.addEventListener('click', resetAll);
+    configBtn.addEventListener('click', openConfig);
+
+    // 初始化
+    loadFromLocal();
+    setupTextSelectionHandler();
+    window.addEventListener('beforeunload', () => saveToLocal());
+</script>
+</body>
+</html>
