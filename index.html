@@ -311,7 +311,7 @@
     let apiConfig = {
         baseUrl: 'https://api.deepseek.com',
         apiKey: 'sk-0f36e9d9795a4c46b7913371c179b757',
-        model: 'deepeeek-v4-flash',
+        model: 'deepseek-v4-flash',
         systemPrompt: '你是一个乐于助人、知识渊博的AI助手。',
         temperature: 0.7,
         maxTokens: 2000
@@ -391,7 +391,7 @@
                 const d = JSON.parse(raw);
                 blocksMap = new Map(d.blocksMap);
                 currentBlockId = d.currentBlockId;
-                if(d.apiConfig) apiConfig = d.apiConfig;
+                //if(d.apiConfig) apiConfig = d.apiConfig;
                 if(!blocksMap.has(currentBlockId)) currentBlockId = null;
                 // 确保每个block的expandedState存在且长度正确
                 for(let block of blocksMap.values()) {
